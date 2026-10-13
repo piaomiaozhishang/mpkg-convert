@@ -16,11 +16,11 @@ package com.doubao.repkg
 object UpdateConfig {
 
     /** 开源仓库地址（关于页显示，点击打开）。 */
-    const val REPO_URL = "https://github.com/piaomiaozhishang/Mpkg2Mp4"
+    const val REPO_URL = "https://github.com/piaomiaozhishang/mpkg-convert"
 
     /** update.json 的 HTTPS 直链。 */
     const val UPDATE_JSON_URL =
-        "https://raw.githubusercontent.com/piaomiaozhishang/Mpkg2Mp4/main/update.json"
+        "https://raw.githubusercontent.com/piaomiaozhishang/mpkg-convert/main/update.json"
 
     /** 自动检查的最小间隔（默认 12 小时，避免每次启动都打网络）。 */
     const val CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000L
