@@ -149,7 +149,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val local = localVersionCode(context)
                 val result = withContext(Dispatchers.IO) {
-                    UpdateChecker.check(UpdateConfig.UPDATE_JSON_URL, local)
+                    // 依次尝试多个地址（Gitee 优先、GitHub 兜底），全部失败才算失败。
+                    // 这样国内用户走 Gitee，海外/有代理的用户走 GitHub raw，都能收到更新。
+                    var last: UpdateChecker.CheckResult =
+                        UpdateChecker.CheckResult.Failed("没有可用的更新地址")
+                    for (url in UpdateConfig.UPDATE_JSON_URLS) {
+                        val r = UpdateChecker.check(url, local)
+                        if (r !is UpdateChecker.CheckResult.Failed) return@withContext r
+                        last = r
+                    }
+                    last
                 }
                 // 失败也写时间戳：充当退避，避免离线时每次启动都重试
                 UpdateSettings.setLastCheckMs(context, nowMs)
