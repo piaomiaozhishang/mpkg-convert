@@ -1,0 +1,18 @@
+{
+  "latestVersionCode": 8,
+  "latestVersionName": "1.7.0",
+  "minSupportedVersionCode": 0,
+  "force": false,
+  "title": "v1.7.0 更新",
+  "notes": [
+    "新增：自动检查更新，发现新版本会弹窗提示",
+    "设置页新增「关于」与「检查更新」",
+    "修复部分机型导出原图上下颠倒的问题",
+    "历史记录列表改为后台加载，长列表滑动更流畅",
+    "导出的视频现在会生成封面缩略图"
+  ],
+  "downloadUrl": "https://github.com/piaomiaozhishang/Mpkg2Mp4/releases/download/v1.7.0/app-v1.7.0.apk",
+  "sizeBytes": 0,
+  "sha256": "",
+  "publishedAt": "2026-10-13"
+}
