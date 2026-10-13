@@ -13,4 +13,4 @@ app/build/
 *.aab
 
 # 旧版本源码包（无需入库）
-Mpkg2Mp4_*.zip
+*源码*.zip

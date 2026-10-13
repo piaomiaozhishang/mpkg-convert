@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Mpkg2Mp4"
+rootProject.name = "mpkg-convert"
 include(":app")

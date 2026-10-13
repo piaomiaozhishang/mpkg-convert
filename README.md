@@ -1,6 +1,9 @@
-# 壁纸视频/图片提取（Mpkg2Mp4）
+# mpkg转换
 
-把 Wallpaper Engine（壁纸引擎）导出的 **.mpkg / .pkg** 壁纸，一键提取成 **MP4 视频**和**图片**的安卓应用。纯 Kotlin + Jetpack Compose 实现，无联网、无广告。
+把 Wallpaper Engine（壁纸引擎）导出的 **.mpkg / .pkg** 壁纸，一键提取成 **MP4 视频**和**图片**的安卓应用。
+纯 Kotlin + Jetpack Compose 实现，壁纸在本地解析，不上传任何文件。
+
+> 仓库名说明：GitHub 只允许 ASCII 仓库名，故仓库为 `mpkg-convert`，应用名为 **mpkg转换**。
 
 ## 它能处理什么
 
@@ -26,7 +29,7 @@ Wallpaper Engine 的壁纸在包里有两种形态，本应用全部支持：
 1. 在电脑端 Wallpaper Engine 中，右键目标壁纸 → **发送至移动设备 → 导出 .mpkg**（建议选「高性能 / 保持原始宽高比 / 60 帧」）；
 2. 把导出的 .mpkg 通过微信、网盘或数据线传到手机；
 3. 打开本应用 → **选择壁纸文件** → 自动扫描提取；
-4. 默认情况下，视频保存到「影片 / Movies」、图片保存到「图片 / Pictures」目录下的 **Mpkg2Mp4** 文件夹；也可在「设置」中**自定义导出文件夹**，均可直接分享。
+4. 默认情况下，视频保存到「影片 / Movies」、图片保存到「图片 / Pictures」目录下的 **mpkg转换** 文件夹；也可在「设置」中**自定义导出文件夹**，均可直接分享。
 5. 每次成功提取都会写入「历史」页：图片显示缩略图、点击可全屏查看；视频点击后会弹出「用哪个应用打开」，选择播放器即可观看。
 
 ## 技术说明
@@ -44,6 +47,12 @@ Wallpaper Engine 的壁纸在包里有两种形态，本应用全部支持：
 - LZ4：极少数视频 mipmap 使用原始 LZ4 block 压缩，通过 `org.lz4:lz4-java` 解压（`AndroidLz4.kt`）
 - 导出位置：默认走 MediaStore（Android 10+，无需权限）/ 公共目录（Android 9-）；自定义文件夹使用 SAF `ACTION_OPEN_DOCUMENT_TREE` + 持久化授权，通过 `androidx.documentfile` 写入（`ExportSettings.kt`）
 - 历史记录：内部存储 JSON（`HistoryStore.kt`，org.json，无 Room 依赖），缩略图存内部存储；图片应用内全屏查看，视频 `ACTION_VIEW` 调用外部播放器
+- 图片加载：`ImageLoader.kt` 后台线程解码 + LRU 缓存 + 按需降采样（历史列表/预览卡片/全屏查看共用）
+- 视频封面：`VideoThumbnail.kt` 用 `MediaMetadataRetriever` 抽第 1 秒帧作缩略图
+- ETC2 解码：优先 GLES 3.0 离屏硬解（`Etc2Decoder.kt`），失败自动回退纯 CPU 解码（`core/Etc2CpuDecoder.kt`，带 60 组测试向量）
+- **联网说明**：唯一的网络行为是「检查更新」——GET 一次静态 `update.json`
+  （不带参数、不带设备标识、不上传任何数据）。可在「设置 → 检查更新」中关闭自动检查。
+  更新地址与开源地址集中配置在 `UpdateConfig.kt`
 - 图片编码：解码出的 RGBA 像素用 Android 系统 Bitmap 编码为 PNG，无需三方库
 
 核心解包逻辑参考并移植自开源项目：
@@ -88,6 +97,7 @@ Wallpaper Engine 的壁纸在包里有两种形态，本应用全部支持：
   - 设置页**「关于」卡片**新增**开源地址**（点击打开）
   - 更新清单是一个静态 `update.json`：只做一次 GET，不带参数、不上传任何数据（新增 `INTERNET` 权限仅用于此）
   - 下载地址支持 **GitHub Release 资产直链**或**网盘/对象存储链接**
+  - 应用名统一为 **mpkg转换**：桌面名、关于页、导出文件夹（`Movies|Pictures/mpkg转换`）
   - 附 `UpdatePolicyTest` / `UpdateCheckerTest`（纯 JVM 单测，不联网）
 
 ## 版权

@@ -556,7 +556,7 @@ private fun SettingsScreen(vm: MainViewModel) {
                 if (treeUri == null) {
                     Text("当前：默认目录", style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium)
-                    Text("视频 →  Movies/Mpkg2Mp4\n图片 →  Pictures/Mpkg2Mp4",
+                    Text("视频 →  Movies/${AssetSaver.FOLDER}\n图片 →  Pictures/${AssetSaver.FOLDER}",
                         style = MaterialTheme.typography.bodySmall)
                 } else {
                     Text("当前：自定义文件夹", style = MaterialTheme.typography.bodyMedium,
@@ -659,7 +659,7 @@ private fun SettingsScreen(vm: MainViewModel) {
                         fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.height(6.dp))
-                Text("Mpkg2Mp4  v${appVersion(context)}", style = MaterialTheme.typography.bodySmall)
+                Text("mpkg转换  v${appVersion(context)}", style = MaterialTheme.typography.bodySmall)
                 Text("本地解析 Wallpaper Engine 壁纸，提取 MP4、原图与预览图，文件不上传。",
                     style = MaterialTheme.typography.bodySmall)
 

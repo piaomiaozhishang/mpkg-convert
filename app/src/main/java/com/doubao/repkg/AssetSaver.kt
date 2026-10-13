@@ -18,10 +18,13 @@ import java.io.File
  *  - Custom folder chosen by the user (SAF) : written via DocumentFile.
  *  - Otherwise Android 10+                  : MediaStore, scoped storage.
  *  - Android 9-                             : direct file in Movies / Pictures.
+ *
+ * Output folder is [FOLDER] ("mpkg转换") under Movies / Pictures.
  */
 object AssetSaver {
 
-    private const val FOLDER = "Mpkg2Mp4"
+    /** Output folder under Movies / Pictures. Also shown in Settings, so keep it public. */
+    const val FOLDER = "mpkg转换"
 
     sealed interface Result {
         data class Saved(val uri: Uri, val path: String) : Result

@@ -10,7 +10,7 @@ package com.doubao.repkg
  * update.json 的内容示例见仓库根目录的 `update.json`。
  * 「下载地址」由 update.json 里的 `downloadUrl` 决定，可以是：
  *   - GitHub Release 资产直链，例如
- *     https://github.com/you/Mpkg2Mp4/releases/download/v1.7.0/app-v1.7.0.apk
+ *     https://github.com/piaomiaozhishang/mpkg-convert/releases/download/v1.7.0/app-v1.7.0.apk
  *   - 或你自己的网盘/对象存储打包地址
  */
 object UpdateConfig {
