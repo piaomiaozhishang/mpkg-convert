@@ -1,5 +1,5 @@
 {
-  "latestVersionCode": 8,
+  "latestVersionCode": 9,
   "latestVersionName": "1.7.0",
   "minSupportedVersionCode": 0,
   "force": false,
@@ -11,8 +11,8 @@
     "历史记录列表改为后台加载，长列表滑动更流畅",
     "导出的视频现在会生成封面缩略图"
   ],
-  "downloadUrl": "https://github.com/piaomiaozhishang/mpkg-convert/releases/download/v1.7.0/app-v1.7.0.apk",
-  "sizeBytes": 0,
-  "sha256": "",
+  "downloadUrl": "https://pan.quark.cn/s/e70ec68d96f7",
+  "sizeBytes": 16706004,
+  "sha256": "c6e73ca3c55b6dee5317364defcd855e2bd172dfad5e337ac64ac63d428b6981",
   "publishedAt": "2026-10-13"
 }
