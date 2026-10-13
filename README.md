@@ -100,6 +100,16 @@ Wallpaper Engine 的壁纸在包里有两种形态，本应用全部支持：
   - 应用名统一为 **mpkg转换**：桌面名、关于页、导出文件夹（`Movies|Pictures/mpkg转换`）
   - 附 `UpdatePolicyTest` / `UpdateCheckerTest`（纯 JVM 单测，不联网）
 
-## 版权
+## 许可
+
+本项目以 **MIT License** 开源，见 [LICENSE](LICENSE)。
+
+核心解包逻辑（容器解析、纹理解码）参考并移植自下列 MIT 开源项目，版权归其原作者所有：
+
+- [RePKG](https://github.com/notscuffed/repkg) — `core/Dxt.kt`（S3TC 解压，源自 LibSquish）
+- [RePKG.Neo](https://github.com/masterLazy/RePKG.Neo) — 容器格式参考
+
+## 声明
 
 壁纸内容版权归原作者所有，本工具仅供个人学习与收藏使用，请勿用于商业用途或二次分发付费内容。
+
