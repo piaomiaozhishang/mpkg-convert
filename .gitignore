@@ -12,5 +12,11 @@ app/build/
 *.apk
 *.aab
 
+# 签名密钥与口令：绝不能入库
+keystore.properties
+keystore/
+*.jks
+*.keystore
+
 # 旧版本源码包（无需入库）
 *源码*.zip

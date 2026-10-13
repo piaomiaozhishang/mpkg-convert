@@ -1,7 +1,19 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+}
+
+// release 签名：口令放在根目录的 keystore.properties（已在 .gitignore 里排除，不会进仓库）。
+// 克隆本仓库的人没有这个文件 → 自动回退到 debug 签名，依然能构建、能装机，不会构建失败。
+val keystorePropsFile = rootProject.file("keystore.properties")
+val hasReleaseKeystore = keystorePropsFile.exists()
+val keystoreProps = Properties().apply {
+    if (hasReleaseKeystore) {
+        keystorePropsFile.inputStream().use { load(it) }
+    }
 }
 
 android {
@@ -17,6 +29,17 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -24,6 +47,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // 有 keystore.properties 就用正式签名；没有则退回 debug 签名（仍可安装）
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
