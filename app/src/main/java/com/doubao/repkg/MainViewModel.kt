@@ -68,6 +68,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Caches expensive resolved bytes (GPU/CPU-decoded ETC2) between card and export. */
     private val resolvedCache = HashMap<String, ByteArray>()
 
+    // --- 更新检查的状态（必须声明在 init 之前：init 里会写 _lastCheckMs）---
+
+    private val _updatePrompt = MutableStateFlow<UpdateInfo?>(null)
+
+    /** 非空时弹「发现新版本」对话框。 */
+    val updatePrompt: StateFlow<UpdateInfo?> = _updatePrompt.asStateFlow()
+
+    private val _checkingUpdate = MutableStateFlow(false)
+    val checkingUpdate: StateFlow<Boolean> = _checkingUpdate.asStateFlow()
+
+    private val _lastCheckMs = MutableStateFlow(0L)
+    val lastCheckMs: StateFlow<Long> = _lastCheckMs.asStateFlow()
+
+    private var updateCheckRunning = false
+
     init {
         refreshHistory()
         _lastCheckMs.value = UpdateSettings.lastCheckMs(getApplication())
@@ -102,20 +117,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // --- 更新检查 ---
-
-    private val _updatePrompt = MutableStateFlow<UpdateInfo?>(null)
-
-    /** 非空时弹「发现新版本」对话框。 */
-    val updatePrompt: StateFlow<UpdateInfo?> = _updatePrompt.asStateFlow()
-
-    private val _checkingUpdate = MutableStateFlow(false)
-    val checkingUpdate: StateFlow<Boolean> = _checkingUpdate.asStateFlow()
-
-    private val _lastCheckMs = MutableStateFlow(0L)
-    val lastCheckMs: StateFlow<Long> = _lastCheckMs.asStateFlow()
-
-    private var updateCheckRunning = false
+    // --- 更新检查（状态字段声明在类的顶部，见 init 之前）---
 
     /** 冷启动时调一次；受 12h 节流 + 自动开关 + 防重入保护，失败静默。 */
     fun maybeCheckForUpdate() {
