@@ -170,17 +170,58 @@ class PkgExtractorTest {
     }
 
     @Test
-    fun mobileVideoTexDecodesToPlayableMp4() {
+    fun mobileVideoTexStreamsOutPlayableMp4() {
         val mp4 = fakeMp4("MOBILEVIDEO")
         val pkg = assemble(
             "PKGM0019",
             listOf("materials/clip.tex" to makeMobileVideoTex(mp4))
         )
-        val r = Extractor.analyze(ByteArraySeekableData(pkg))
+        val src = ByteArraySeekableData(pkg)
+        val r = Extractor.analyze(src)
         assertTrue(r.isVideo)
         assertNotNull(r.main)
-        // Byte-identical to the embedded MP4 -> playable, not TEX bytes.
-        assertArrayEquals(mp4, r.main!!.bytes)
+        // 大视频不再进内存：载荷留在包里，导出时流式解出
+        assertTrue(r.main!!.fromPackage)
+        assertNull(r.main!!.bytes)
+        assertEquals(mp4.size.toLong(), r.main!!.decodedSize)
+
+        val out = java.io.ByteArrayOutputStream()
+        val n = Extractor.extractVideoTo(src, r.main!!, out, null, isMobile = true)
+        assertEquals(mp4.size.toLong(), n)
+        // 流式解出的内容与内嵌 MP4 逐字节一致 → 可播放
+        assertArrayEquals(mp4, out.toByteArray())
+    }
+
+    @Test
+    fun mobileVideoTexLz4StreamsOut() {
+        // LZ4 压缩的视频 mip：解压大小来自 mip 头，流式解出后必须与原 MP4 一致
+        val mp4 = fakeMp4("LZ4VIDEO") + ByteArray(300 * 1024) { (it % 13).toByte() }
+        val block = net.jpountz.lz4.LZ4Factory.fastestInstance().fastCompressor().compress(mp4)
+        assertTrue("compression should shrink this payload", block.size < mp4.size)
+
+        var out = "TEXV0005\u0000".toByteArray()
+        out += "TEXI0001\u0000".toByteArray()
+        out += le32(0); out += le32(32)
+        out += le32(1920); out += le32(1080); out += le32(1920); out += le32(1080)
+        out += le32(0)
+        out += "TEXB0004\u0000".toByteArray()
+        out += le32(1); out += le32(-1); out += le32(1)
+        out += le32(1)        // mipmap count (v3 layout on mobile)
+        out += le32(1920); out += le32(1080)
+        out += le32(1); out += le32(mp4.size); out += le32(block.size)   // isLz4=1
+        out += block
+
+        val pkg = assemble("PKGM0019", listOf("materials/clip.tex" to out))
+        val src = ByteArraySeekableData(pkg)
+        val r = Extractor.analyze(src)
+        assertTrue(r.isVideo)
+        assertNotNull(r.main)
+        assertEquals(mp4.size.toLong(), r.main!!.decodedSize)
+
+        val bos = java.io.ByteArrayOutputStream()
+        val n = Extractor.extractVideoTo(src, r.main!!, bos, null, isMobile = true)
+        assertEquals(mp4.size.toLong(), n)
+        assertArrayEquals(mp4, bos.toByteArray())
     }
 
     // --- Static wallpaper ---
@@ -257,10 +298,13 @@ class PkgExtractorTest {
         val tex = makeDesktopVideoTexLongCondition(mp4, 5000)
         assertTrue("header should exceed the peek window", tex.size > 4096)
         val pkg = assemble("PKGV0005", listOf("materials/clip.tex" to tex))
-        val r = Extractor.analyze(ByteArraySeekableData(pkg))
+        val src = ByteArraySeekableData(pkg)
+        val r = Extractor.analyze(src)
         assertTrue("video wallpaper expected", r.isVideo)
         assertNotNull(r.main)
-        assertArrayEquals(mp4, r.main!!.bytes)
+        val bos = java.io.ByteArrayOutputStream()
+        Extractor.extractVideoTo(src, r.main!!, bos, null, isMobile = false)
+        assertArrayEquals(mp4, bos.toByteArray())
     }
 
     @Test

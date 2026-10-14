@@ -31,7 +31,9 @@ data class TexPeek(
     val width: Int,
     val height: Int,
     val texFormat: Int,
-    val imageFormat: Int
+    val imageFormat: Int,
+    /** Payload size after decompression (mip0), used to rank video candidates. */
+    val decodedSize: Long = 0L
 )
 
 /**
@@ -66,7 +68,8 @@ object TexAssetDecoder {
             width = p.mipWidth,
             height = p.mipHeight,
             texFormat = p.texFormat,
-            imageFormat = p.imageFormat
+            imageFormat = p.imageFormat,
+            decodedSize = p.decodedSize
         )
     }
 
@@ -150,6 +153,7 @@ object TexAssetDecoder {
         val isVideo: Boolean,
         val mipWidth: Int,
         val mipHeight: Int,
+        val decodedSize: Long,
         val mipBytes: ByteArray?
     )
 
@@ -244,12 +248,14 @@ object TexAssetDecoder {
             else -> throw FormatException("Unsupported TEX container version $version")
         }
 
+        val decodedSize = (if (isLz4) decompressedSize else byteCount).toLong()
+            .coerceAtLeast(0L)
         val isVideo = headerSaysVideo || containerSaysVideo || imageFormat == 35
 
         if (!wantBytes) {
             return Parsed(
                 texFormat, imageWidth, imageHeight, imageFormat, isVideo,
-                mipWidth, mipHeight, null
+                mipWidth, mipHeight, decodedSize, null
             )
         }
 
@@ -261,7 +267,7 @@ object TexAssetDecoder {
 
         return Parsed(
             texFormat, imageWidth, imageHeight, imageFormat, isVideo,
-            mipWidth, mipHeight, mipBytes
+            mipWidth, mipHeight, decodedSize, mipBytes
         )
     }
 

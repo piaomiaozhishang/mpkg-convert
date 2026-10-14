@@ -20,6 +20,13 @@ data class ExtractedAsset(
     val pixelHeight: Int = 0,
     /** True for the wallpaper's main full-resolution content. */
     val isPrimary: Boolean = false,
+    /**
+     * True when the payload is still inside the package and must be streamed out
+     * with [Extractor.extractVideoTo] (large videos are never held in memory).
+     */
+    val fromPackage: Boolean = false,
+    /** Decoded payload size in bytes (videos), for progress/size display. */
+    val decodedSize: Long = 0L,
     val note: String? = null
 ) {
     override fun equals(other: Any?): Boolean {
@@ -46,7 +53,9 @@ class WallpaperResult(
     /** Main content: original image (static) or video (dynamic). May be null if undecodable. */
     val main: ExtractedAsset?,
     /** Preview picture, when the package provides one. */
-    val preview: ExtractedAsset?
+    val preview: ExtractedAsset?,
+    /** True when the container was a mobile PKGM package. */
+    val isMobile: Boolean = false
 )
 
 /** Progress callback while scanning a package. */
@@ -76,19 +85,21 @@ object Extractor {
         val total = archive.entries.size
 
         // Pass 1: classify entries (tex headers are peeked, no pixel payload).
-        val videoEntries = ArrayList<PkgEntry>()
+        val videoEntries = ArrayList<Pair<PkgEntry, Long>>()   // entry -> decoded size
         val imageTexCandidates = ArrayList<ImageRanker.Candidate>()
         val plainImageEntries = ArrayList<PkgEntry>()
 
         archive.entries.forEachIndexed { index, entry ->
             progress?.onProgress(index, total, entry.path)
             when {
-                entry.extension == ".mp4" -> videoEntries.add(entry)
+                entry.extension == ".mp4" -> videoEntries.add(entry to entry.length)
                 entry.extension == ".tex" -> {
                     val peek = peekTexHeader(src, entry, isMobile)
                     when {
                         peek == null -> { /* unreadable */ }
-                        peek.isVideo -> videoEntries.add(entry)
+                        peek.isVideo -> videoEntries.add(
+                            entry to (peek.decodedSize.takeIf { it > 0 } ?: entry.length)
+                        )
                         else -> imageTexCandidates.add(
                             ImageRanker.Candidate(
                                 path = entry.path,
@@ -113,21 +124,17 @@ object Extractor {
         // --- Main content ---
         var main: ExtractedAsset? = null
         if (isVideo) {
-            // Pick the largest decodable video (direct mp4 or video tex).
-            var bestEntry: PkgEntry? = null
-            var bestBytes: ByteArray? = null
-            for (ve in videoEntries) {
-                val mb = decodeVideo(src, ve, isMobile, lz4) ?: continue
-                if (bestBytes == null || mb.size > bestBytes!!.size) {
-                    bestEntry = ve; bestBytes = mb
-                }
-            }
-            if (bestEntry != null && bestBytes != null) {
+            // Pick the largest video by its DECODED size (from the peeked mip
+            // header — the payload is never loaded into memory here).
+            val best = videoEntries.maxByOrNull { it.second }
+            if (best != null) {
                 main = ExtractedAsset(
                     AssetKind.VIDEO,
-                    uniqueName(usedNames, bestEntry.nameWithoutExtension, "mp4"),
-                    bestEntry.path,
-                    bytes = bestBytes,
+                    uniqueName(usedNames, best.first.nameWithoutExtension, "mp4"),
+                    best.first.path,
+                    bytes = null,
+                    fromPackage = true,
+                    decodedSize = best.second,
                     isPrimary = true,
                     note = "视频"
                 )
@@ -214,8 +221,39 @@ object Extractor {
         }
 
         progress?.onProgress(total, total, "完成")
-        return WallpaperResult(isVideo, main, preview)
+        return WallpaperResult(isVideo, main, preview, isMobile)
     }
+
+    /**
+     * Streams the video payload of [main] (a VIDEO asset with [ExtractedAsset.fromPackage])
+     * into [out] — chunked copy for direct .mp4 entries, streamed LZ4 decode for .tex.
+     * Never loads the whole video into memory.
+     *
+     * @return bytes written.
+     */
+    fun extractVideoTo(
+        src: SeekableData,
+        main: ExtractedAsset,
+        out: java.io.OutputStream,
+        lz4: Lz4BlockDecompressor? = null,
+        isMobile: Boolean = false
+    ): Long {
+        require(main.kind == AssetKind.VIDEO) { "not a video asset" }
+        val entry = archiveEntryOrNull(src, main.sourceEntry)
+            ?: throw FormatException("Entry not found: ${main.sourceEntry}")
+        return if (entry.extension == ".mp4") {
+            src.copyRangeTo(out, entry.dataOffset, entry.length)
+        } else {
+            // .tex 从 entry 自身的 0 偏移开始解析 → 用子视图
+            TexVideoExtractor.extractVideoTo(
+                SubSeekableData(src, entry.dataOffset, entry.length),
+                lz4, out, isMobile
+            )
+        }
+    }
+
+    private fun archiveEntryOrNull(src: SeekableData, path: String): PkgEntry? =
+        PkgReader.read(src).entries.firstOrNull { it.path == path }
 
     // --- Decoding helpers ---
 
@@ -241,19 +279,6 @@ object Extractor {
         } catch (e: Exception) {
             null
         }
-    }
-
-    private fun decodeVideo(
-        src: SeekableData, entry: PkgEntry, isMobile: Boolean, lz4: Lz4BlockDecompressor?
-    ): ByteArray? {
-        val raw = PkgReader.readEntryBytes(src, entry)
-        if (entry.extension == ".mp4") return raw
-        val asset = try {
-            TexAssetDecoder.decode(raw, lz4, isMobile)
-        } catch (e: RuntimeException) {
-            null
-        }
-        return (asset as? TexAsset.Video)?.bytes
     }
 
     private fun decodeImage(

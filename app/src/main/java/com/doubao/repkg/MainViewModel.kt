@@ -13,6 +13,7 @@ import com.doubao.repkg.core.ChannelSeekableData
 import com.doubao.repkg.core.Etc2CpuDecoder
 import com.doubao.repkg.core.ExtractedAsset
 import com.doubao.repkg.core.Extractor
+import com.doubao.repkg.core.SeekableData
 import com.doubao.repkg.core.WallpaperResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -68,6 +69,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Caches expensive resolved bytes (GPU/CPU-decoded ETC2) between card and export. */
     private val resolvedCache = HashMap<String, ByteArray>()
 
+    // --- 大文件流式支持：打开的数据源与视频临时文件 ---
+    private var openResource: java.io.Closeable? = null
+    private var src: SeekableData? = null
+    private var analyzedIsMobile: Boolean = false
+    private var videoTemp: File? = null
+    private var cacheTemp: File? = null
+
+    private fun closeSources() {
+        runCatching { openResource?.close() }
+        openResource = null
+        src = null
+        runCatching { videoTemp?.delete() }
+        videoTemp = null
+        runCatching { cacheTemp?.delete() }
+        cacheTemp = null
+    }
+
+    override fun onCleared() {
+        closeSources()
+        super.onCleared()
+    }
+
     // --- 更新检查的状态（必须声明在 init 之前：init 里会写 _lastCheckMs）---
 
     private val _updatePrompt = MutableStateFlow<UpdateInfo?>(null)
@@ -92,6 +115,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = UiState.Idle
         result = null
         resolvedCache.clear()
+        closeSources()
     }
 
     fun refreshHistory() {
@@ -250,10 +274,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun process(uri: Uri) {
         val context = getApplication<Application>()
         viewModelScope.launch {
-            _state.value = UiState.Working(0, 0, "正在解析壁纸…")
+            _state.value = UiState.Working(0, 0, "正在读取壁纸…")
+            closeSources()
             resolvedCache.clear()
             try {
-                val r = withContext(Dispatchers.IO) { analyze(context, uri) }
+                // 打开一次数据源并保持到本次结果结束（导出时还要从包里流式读取）
+                val opened = withContext(Dispatchers.IO) { openSource(context, uri) }
+                openResource = opened.first
+                src = opened.second
+                val r = withContext(Dispatchers.IO) {
+                    Extractor.analyze(
+                        src = opened.second,
+                        lz4 = AndroidLz4,
+                        progress = { current, total, message ->
+                            // Throttle: a package can have many entries; pushing a new
+                            // state per entry would recompose the whole screen each time.
+                            val now = System.currentTimeMillis()
+                            if (current >= total || now - lastTick >= PROGRESS_MIN_INTERVAL_MS) {
+                                lastTick = now
+                                _state.value = UiState.Working(current, total, message)
+                            }
+                        }
+                    )
+                }
+                analyzedIsMobile = r.isMobile
                 result = r
                 if (r.main == null && r.preview == null) {
                     _state.value = UiState.Error(
@@ -271,6 +315,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         previewLabel = previewLabel(r)
                     )
                 }
+            } catch (e: OutOfMemoryError) {
+                closeSources()
+                _state.value = UiState.Error("内存不足：这个壁纸太大，转换失败。请试试较小的文件。")
             } catch (e: Exception) {
                 _state.value = UiState.Error(e.message ?: "解析失败")
             }
@@ -295,6 +342,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) { doExport(context, asset) }
                 _events.emit("已保存：${asset.fileName}")
                 refreshHistory()
+            } catch (e: OutOfMemoryError) {
+                _events.emit("内存不足：文件过大，导出失败")
             } catch (e: Exception) {
                 _events.emit("导出失败：${e.message ?: "未知错误"}")
             } finally {
@@ -305,28 +354,68 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     // --- Internals ---
 
-    private fun analyze(context: Context, uri: Uri): WallpaperResult {
-        val temp = copyToCache(context, uri)
+    /**
+     * Opens the package as a seekable data source. Prefers a file descriptor
+     * (zero-copy, seekable); falls back to a cache copy for providers that
+     * cannot be opened that way.
+     */
+    private fun openSource(context: Context, uri: Uri): Pair<java.io.Closeable, SeekableData> {
         try {
-            var lastTick = 0L
-            return java.io.FileInputStream(temp).channel.use { channel ->
-                val src = ChannelSeekableData(channel)
-                Extractor.analyze(
-                    src = src,
-                    lz4 = AndroidLz4,
-                    progress = { current, total, message ->
-                        // Throttle: a package can have many entries; pushing a new
-                        // state per entry would recompose the whole screen each time.
-                        val now = System.currentTimeMillis()
-                        if (current >= total || now - lastTick >= PROGRESS_MIN_INTERVAL_MS) {
-                            lastTick = now
-                            _state.value = UiState.Working(current, total, message)
-                        }
-                    }
-                )
+            val pfd = context.contentResolver.openFileDescriptor(uri, "r")
+            if (pfd != null) {
+                val channel = java.io.FileInputStream(pfd.fileDescriptor).channel
+                val resource = java.io.Closeable {
+                    runCatching { channel.close() }
+                    runCatching { pfd.close() }
+                }
+                return Pair(resource, ChannelSeekableData(channel))
             }
-        } finally {
-            temp.delete()
+        } catch (e: Exception) {
+            // fall through to the cache-copy path
+        }
+        val temp = copyToCache(context, uri)
+        cacheTemp = temp
+        val channel = java.io.FileInputStream(temp).channel
+        return Pair(channel, ChannelSeekableData(channel))
+    }
+
+    private fun analyze(src: SeekableData): WallpaperResult {
+        var lastTick = 0L
+        return Extractor.analyze(
+            src = src,
+            lz4 = AndroidLz4,
+            progress = { current, total, message ->
+                // Throttle: a package can have many entries; pushing a new
+                // state per entry would recompose the whole screen each time.
+                val now = System.currentTimeMillis()
+                if (current >= total || now - lastTick >= PROGRESS_MIN_INTERVAL_MS) {
+                    lastTick = now
+                    _state.value = UiState.Working(current, total, message)
+                }
+            }
+        )
+    }
+
+    /** 解出视频到缓存临时文件（流式，几 GB 也只占 1 MiB 内存），供封面与导出复用。 */
+    @Synchronized
+    private fun ensureVideoTemp(main: ExtractedAsset): File? {
+        videoTemp?.let { if (it.exists()) return it }
+        val srcData = src ?: return null
+        val tmp = File(getApplication<Application>().cacheDir, "video_${System.currentTimeMillis()}.mp4")
+        return try {
+            java.io.FileOutputStream(tmp).use { out ->
+                Extractor.extractVideoTo(srcData, main, out, AndroidLz4, analyzedIsMobile)
+            }
+            if (tmp.length() > 0) {
+                videoTemp = tmp
+                tmp
+            } else {
+                tmp.delete()
+                null
+            }
+        } catch (e: Exception) {
+            runCatching { tmp.delete() }
+            null
         }
     }
 
@@ -370,6 +459,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun doExport(context: Context, asset: ExtractedAsset) {
+        // 大视频：流式解到缓存临时文件，再分块拷入媒体库/自选目录（全程不进内存）
+        if (asset.kind == AssetKind.VIDEO && asset.fromPackage) {
+            val tmp = ensureVideoTemp(asset) ?: error("视频提取失败（可能存储空间不足）")
+            val size = tmp.length()
+            when (val saveResult = AssetSaver.saveFromFile(context, asset.kind, asset.fileName, tmp)) {
+                is AssetSaver.Result.Saved -> {
+                    videoTemp?.delete()
+                    videoTemp = null
+                    val id = System.currentTimeMillis()
+                    val thumb = HistoryStore.makeVideoThumb(context, id, saveResult.uri)
+                    HistoryStore.add(
+                        context,
+                        HistoryRecord(
+                            id = id,
+                            timeMs = System.currentTimeMillis(),
+                            kind = asset.kind,
+                            fileName = asset.fileName,
+                            sizeBytes = size,
+                            width = asset.pixelWidth,
+                            height = asset.pixelHeight,
+                            uriString = saveResult.uri.toString(),
+                            location = saveResult.path,
+                            thumbPath = thumb
+                        )
+                    )
+                }
+                is AssetSaver.Result.Failed -> error(saveResult.reason)
+            }
+            return
+        }
+
         val finalBytes = resolveBytes(asset)
 
         val saveResult = AssetSaver.save(context, asset.kind, asset.fileName, finalBytes)
@@ -413,8 +533,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val dir = File(context.cacheDir, "card").apply { mkdirs() }
 
         val main = r.main
-        if (r.isVideo && main?.bytes != null) {
-            videoFrameToJpg(context, main.bytes, dir)?.let { return it }
+        if (r.isVideo && main != null) {
+            // 大视频：流式解出到缓存临时文件，再抽帧（内存占用恒定）
+            if (main.fromPackage) {
+                val tmp = ensureVideoTemp(main)
+                if (tmp != null) videoFrameToJpg(context, tmp, dir)?.let { return it }
+            } else if (main.bytes != null) {
+                videoFrameToJpg(context, main.bytes, dir)?.let { return it }
+            }
         }
 
         val source = r.preview ?: main?.takeIf { it.kind == AssetKind.IMAGE }
@@ -434,6 +560,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             null
         } finally {
             tmp.delete()
+        }
+    }
+
+    private fun videoFrameToJpg(context: Context, videoFile: File, dir: File): String? {
+        return try {
+            val frame = VideoThumbnail.fromFile(videoFile.absolutePath) ?: return null
+            writeJpg(dir, "card_video", scaleDown(frame, CARD_EDGE))
+        } catch (e: Exception) {
+            null
         }
     }
 

@@ -1,6 +1,8 @@
 package com.doubao.repkg.core
 
 import java.io.EOFException
+import java.io.InputStream
+import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
@@ -16,6 +18,50 @@ interface SeekableData {
 
     /** Read exactly [length] bytes starting at absolute [offset]. */
     fun readAt(offset: Long, length: Int): ByteArray
+}
+
+/**
+ * Opens [length] bytes at [offset] as a sequential [InputStream] (chunked
+ * `readAt` under the hood — never materialises the whole region in memory).
+ */
+fun SeekableData.regionStream(offset: Long, length: Long, bufferSize: Int = 1 shl 16): InputStream {
+    if (length <= 0) return java.io.ByteArrayInputStream(ByteArray(0))
+    return object : InputStream() {
+        private var pos = offset
+        private val end = offset + length
+
+        override fun read(): Int {
+            val b = ByteArray(1)
+            val n = read(b, 0, 1)
+            return if (n < 0) -1 else b[0].toInt() and 0xFF
+        }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            val remaining = end - pos
+            if (remaining <= 0 || len == 0) return if (len == 0) 0 else -1
+            val n = minOf(len.toLong(), remaining, bufferSize.toLong()).toInt()
+            val data = readAt(pos, n)
+            System.arraycopy(data, 0, b, off, data.size)
+            pos += data.size
+            return data.size
+        }
+    }
+}
+
+/** Copies [length] bytes at [offset] to [out] in fixed chunks. Returns bytes copied. */
+fun SeekableData.copyRangeTo(out: OutputStream, offset: Long, length: Long, bufferSize: Int = 1 shl 20): Long {
+    var pos = offset
+    val end = offset + length
+    val buf = ByteArray(bufferSize)
+    var total = 0L
+    while (pos < end) {
+        val n = minOf(buf.size.toLong(), end - pos).toInt()
+        val data = readAt(pos, n)
+        out.write(data, 0, data.size)
+        pos += data.size
+        total += data.size
+    }
+    return total
 }
 
 /** Backed by a seekable [FileChannel]. */
@@ -54,6 +100,16 @@ class ByteArraySeekableData(private val data: ByteArray) : SeekableData {
     companion object {
         private val EMPTY = ByteArray(0)
     }
+}
+
+/** 以 [base] 为 0 点、长度 [size] 的子视图（把包内某个 entry 当独立文件用）。 */
+class SubSeekableData(
+    private val parent: SeekableData,
+    private val base: Long,
+    override val size: Long
+) : SeekableData {
+    override fun readAt(offset: Long, length: Int): ByteArray =
+        parent.readAt(base + offset, length)
 }
 
 /**
