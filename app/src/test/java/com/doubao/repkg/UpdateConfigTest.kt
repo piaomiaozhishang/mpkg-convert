@@ -32,11 +32,21 @@ class UpdateConfigTest {
     }
 
     @Test
-    fun giteeUrlKeepsTheOwnersRealSpelling() {
-        // 用户在 Gitee 的用户名是 piaomiaozhisahng（与 GitHub 拼写不同），别被"纠正"
+    fun giteeUrlUsesTheNewAccountSpelling() {
+        // 现在用的 Gitee 账户是 piaomiaozhishang（与 GitHub 同拼写）
         assertTrue(
-            UpdateConfig.UPDATE_JSON_URLS.any { it.contains("piaomiaozhisahng") }
+            "应使用新账户 piaomiaozhishang",
+            UpdateConfig.UPDATE_JSON_URLS.any { it.contains("piaomiaozhishang") }
         )
+    }
+
+    @Test
+    fun giteeUrlMustNotUseTheOldAccount() {
+        // Gitee 上还有一个拼写相近的旧账户 piaomiaozhisahng（zhiSAHng），已弃用。
+        // 曾经因为搞混这两个账户配错地址，这里钉死，防止再犯。
+        for (url in UpdateConfig.UPDATE_JSON_URLS) {
+            assertFalse("不能用已弃用的旧账户 piaomiaozhisahng：$url", url.contains("piaomiaozhisahng"))
+        }
     }
 
     @Test

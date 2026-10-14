@@ -22,11 +22,12 @@ object UpdateConfig {
     /**
      * 更新清单地址。目前只保留一个，想加备用地址直接往列表里追加即可。
      *
-     * 注意 `piaomiaozhisahng` 是用户在 **Gitee** 的真实用户名，与 GitHub 的
-     * `piaomiaozhishang` 拼写不同（少了一个 h 的位置），别"顺手改对"。
+     * Gitee 用户名是 `piaomiaozhishang`（与 GitHub 同拼写）。
+     * 注意 Gitee 上另有一个拼写相近的账户 `piaomiaozhisahng`（zhiSAHng，旧账户，已不用），
+     * 里面也有同名 mpkg-convert 仓库 —— **别用那个**。
      */
     val UPDATE_JSON_URLS: List<String> = listOf(
-        "https://gitee.com/piaomiaozhisahng/mpkg-convert/raw/master/update.json"
+        "https://gitee.com/piaomiaozhishang/mpkg-convert/raw/master/update.json"
     )
 
     /** 自动检查的最小间隔（默认 12 小时，避免每次启动都打网络）。 */
