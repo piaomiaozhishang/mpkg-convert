@@ -4,11 +4,12 @@ package com.doubao.repkg
  * 更新与开源信息 —— **只改这一个文件**即可。
  *
  * 两个关键地址：
- *   1. [REPO_URL]         开源仓库地址（设置 → 关于 里显示，可点击打开）= GitHub
- *   2. [UPDATE_JSON_URLS] 更新清单地址列表，**按顺序尝试，第一个拿不到就试下一个**
- *      - 主用 **Gitee**：国内手机直接可访问、免登录
- *      - 兜底 **GitHub raw**：海外或有代理时可用
- *      Gitee 的默认分支可能是 master 也可能是 main，两个都写上更保险。
+ *   1. [REPO_URL]        开源仓库地址（设置 → 关于 里显示，可点击打开）
+ *   2. [UPDATE_JSON_URLS] 更新清单地址
+ *
+ * ⚠️ 更新清单必须用 **raw 直链**，不能用仓库浏览页地址：
+ *    - ✅ https://gitee.com/<用户>/<仓库>/raw/<分支>/update.json   返回纯文本 JSON
+ *    - ❌ https://gitee.com/<用户>/<仓库>/blob/<分支>/update.json  返回网页/405，App 读不了
  *
  * 「下载地址」不在这里，而在 update.json 的 `downloadUrl` 里 ——
  * 所以**换下载源（网盘/Release/对象存储）不需要重新发版**，改 update.json 即可。
@@ -19,14 +20,13 @@ object UpdateConfig {
     const val REPO_URL = "https://github.com/piaomiaozhishang/mpkg-convert"
 
     /**
-     * 更新清单地址（按优先级排列，依次尝试）。
+     * 更新清单地址。目前只保留一个，想加备用地址直接往列表里追加即可。
+     *
      * 注意 `piaomiaozhisahng` 是用户在 **Gitee** 的真实用户名，与 GitHub 的
      * `piaomiaozhishang` 拼写不同（少了一个 h 的位置），别"顺手改对"。
      */
     val UPDATE_JSON_URLS: List<String> = listOf(
-        "https://gitee.com/piaomiaozhisahng/mpkg-convert/raw/master/update.json",
-        "https://gitee.com/piaomiaozhisahng/mpkg-convert/raw/main/update.json",
-        "https://raw.githubusercontent.com/piaomiaozhishang/mpkg-convert/main/update.json"
+        "https://gitee.com/piaomiaozhisahng/mpkg-convert/raw/master/update.json"
     )
 
     /** 自动检查的最小间隔（默认 12 小时，避免每次启动都打网络）。 */

@@ -23,11 +23,12 @@ class UpdateConfigTest {
     }
 
     @Test
-    fun hasAGithubFallback() {
-        assertTrue(
-            "应保留 GitHub raw 作为兜底",
-            UpdateConfig.UPDATE_JSON_URLS.any { it.contains("raw.githubusercontent.com") }
-        )
+    fun updateJsonUrlMustBeRawNotBlobPage() {
+        // Gitee 的浏览页地址(/blob/) 返回网页/405，App 解析必失败；必须是 raw 直链。
+        for (url in UpdateConfig.UPDATE_JSON_URLS) {
+            assertTrue("更新清单必须是 raw 直链，不能用 /blob/ 浏览页：$url", url.contains("/raw/"))
+            assertFalse("更新清单不能是 /blob/ 浏览页：$url", url.contains("/blob/"))
+        }
     }
 
     @Test
